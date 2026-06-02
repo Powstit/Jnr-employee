@@ -131,6 +131,28 @@ jobs:
           echo "--- Developer ID identities ---"
           security find-identity -v -p codesigning | grep -i "Developer ID" || echo "(no Developer ID match)"
 
+      # Tauri signs the .app and .dmg, but Apple notarization validates nested
+      # executable resources independently. Re-sign bundled helper binaries with
+      # the same Developer ID identity, secure timestamp, and hardened runtime
+      # before Tauri copies them into Liquid Clips.app.
+      - name: sign sidecar helper binaries
+        run: |
+          set -euo pipefail
+          IDENTITY='Developer ID Application: daniel diyepriye dokubo (KT68NGT4LX)'
+          for bin in \
+            desktop/python-sidecar/bin/ffmpeg \
+            desktop/python-sidecar/bin/ffprobe \
+            desktop/python-sidecar/bin/junior-face-detect
+          do
+            if [ ! -f "$bin" ]; then
+              echo "✗ Missing sidecar binary: $bin" >&2
+              exit 1
+            fi
+            echo "Signing $bin"
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$bin"
+            codesign --verify --strict --verbose=2 "$bin"
+          done
+
       - name: build signed Apple Silicon app
         working-directory: ./desktop
         env:
